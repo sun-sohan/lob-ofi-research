@@ -1,33 +1,41 @@
-Current Terminal Output (30 second intervals):<br><br>
-Computing best level OFI...<br>
-Successful.<br><br>
-Computing multi level OFI...<br>
-TIME INTERVAL CHANGE: Computing OFI for level 0 with interval 30s...<br>
-TIME INTERVAL CHANGE: Computing OFI for level 1 with interval 30s...<br>
-TIME INTERVAL CHANGE: Computing OFI for level 2 with interval 30s...<br>
-TIME INTERVAL CHANGE: Computing OFI for level 3 with interval 30s...<br>
-TIME INTERVAL CHANGE: Computing OFI for level 4 with interval 30s...<br>
-TIME INTERVAL CHANGE: Computing OFI for level 5 with interval 30s...<br>
-TIME INTERVAL CHANGE: Computing OFI for level 6 with interval 30s...<br>
-TIME INTERVAL CHANGE: Computing OFI for level 7 with interval 30s...<br>
-TIME INTERVAL CHANGE: Computing OFI for level 8 with interval 30s...<br>
-TIME INTERVAL CHANGE: Computing OFI for level 9 with interval 30s...<br>
-Successful.<br><br>
-Computing integrated OFI...<br>
-First PCA Weights for each OFI level:<br><br>
+# Order Flow Imbalance Feature Engineering
 
-Level&nbsp;&nbsp;&nbsp;&nbsp;Weight<br>
-Level 00&nbsp;&nbsp;&nbsp;0.000268<br>
-Level 01&nbsp;&nbsp;&nbsp;0.002165<br>
-Level 02&nbsp;&nbsp;&nbsp;-0.000645<br>
-Level 03&nbsp;&nbsp;&nbsp;-0.001456<br>
-Level 04&nbsp;&nbsp;&nbsp;-0.001483<br>
-Level 05&nbsp;&nbsp;&nbsp;0.974683<br>
-Level 06&nbsp;&nbsp;&nbsp;-0.012606<br>
-Level 07&nbsp;&nbsp;&nbsp;-0.002230<br>
-Level 08&nbsp;&nbsp;&nbsp;-0.003127<br>
-Level 09&nbsp;&nbsp;&nbsp;-0.001337<br><br>
+Order flow imbalance (OFI) features built from Level 10 limit order book data for AAPL, and a test of whether they predict short-term price moves. The features follow Cont, Cucuringu and Zhang, [*Cross-impact of order flow imbalance in equity markets*](https://arxiv.org/abs/2112.13213).
 
-Successful.<br><br>
-Computing integrated OFI...<br>
-Successful.<br>
+## Data
+
+`first_25000_rows.csv`: 25,000 order book updates from October 21, 2024 (about 70 minutes). Each row has the top 10 bid and ask levels with prices, sizes and order counts.
+
+## Features (`main.py`)
+
+All features are summed over 5-second intervals.
+
+- **Best-level OFI:** the change in buying versus selling pressure at the best bid and ask.
+- **Multi-level OFI:** the same calculation at each of the 10 levels, divided by the average order book depth so the levels are comparable.
+- **Integrated OFI:** the 10 levels combined into one number, weighted by the first principal component (PCA).
+- **Cross-asset OFI:** code to line up OFI from several stocks by timestamp. It currently runs on AAPL data only.
+
+Outputs are saved to `feature_outputs/`.
+
+## Analysis (`regressionexploration.ipynb`)
+
+1. **Targets:** price changes 5, 10, 15, 30, 45 and 60 seconds ahead.
+2. **Stationarity:** ADF tests confirm every feature and target is stationary.
+3. **Lag selection:** autocorrelation plots (95% confidence) show which lags of each feature carry information.
+4. **Models:** Ridge regression, random forest and ARIMAX on the lagged features, predicting the 5-second price change.
+
+## Results
+
+- In the ARIMAX model, two lag structures were statistically significant at the 5% level:
+  - **60 seconds:** level 0 and level 4 OFI, both at lag 12 (p = 0.003 and 0.006)
+  - **3–4 minutes:** level 4 OFI at lag 34 and level 9 OFI at lag 44 (p = 0.010 and 0.016)
+- The PCA-integrated OFI was not significant once lagged. Almost all of its weight landed on a single level, so it lost the information in the others.
+- Out-of-sample predictive power was close to zero: Ridge test R² was 0.002, and the random forest overfit (train R² 0.28, test −0.05). With only 70 minutes of data, these results are a starting point for 1-minute prediction rather than a usable signal.
+
+## Running it
+
+```bash
+pip install pandas numpy scikit-learn statsmodels matplotlib
+python main.py                      # writes the feature CSVs
+jupyter notebook regressionexploration.ipynb
+```
